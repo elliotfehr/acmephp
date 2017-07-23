@@ -1,9 +1,9 @@
 {
-    "name": "acmephp/acmephp",
+    "name": "elliotfehr/acmephp",
     "description": "Let's Encrypt client written in PHP",
     "type": "project",
     "license": "MIT",
-    "homepage": "https://github.com/acmephp/acmephp",
+    "homepage": "https://github.com/elliotfehr/acmephp",
     "keywords": [
         "acme",
         "acmephp",
@@ -61,11 +61,6 @@
     "autoload-dev": {
         "psr-4": {
             "Tests\\AcmePhp\\": "tests/"
-        }
-    },
-    "extra": {
-        "branch-alias": {
-            "dev-master": "1.0.x-dev"
         }
     },
     "bin": [
