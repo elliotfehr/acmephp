@@ -1,9 +1,9 @@
 {
-    "name": "elliotfehr/acmephp",
+    "name": "acmephp/acmephp",
     "description": "Let's Encrypt client written in PHP",
     "type": "project",
     "license": "MIT",
-    "homepage": "https://github.com/elliotfehr/acmephp",
+    "homepage": "https://github.com/acmephp/acmephp",
     "keywords": [
         "acme",
         "acmephp",
