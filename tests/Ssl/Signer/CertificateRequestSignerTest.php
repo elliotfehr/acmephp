@@ -1,7 +1,7 @@
 <?php
 
 /*
- * This file is part of the ACME PHP library.
+ * This file is part of the Acme PHP project.
  *
  * (c) Titouan Galopin <galopintitouan@gmail.com>
  *
@@ -45,14 +45,12 @@ class CertificateRequestSignerTest extends \PHPUnit_Framework_TestCase
         $csrResult = openssl_csr_get_subject($result, false);
         $this->assertSame(
             [
-                'commonName'             => 'acmephp.com',
-                'countryName'            => 'FR',
-                'stateOrProvinceName'    => 'france',
-                'localityName'           => 'Paris',
-                'organizationName'       => 'acme',
+                'countryName' => 'FR',
+                'stateOrProvinceName' => 'france',
+                'localityName' => 'Paris',
+                'organizationName' => 'acme',
                 'organizationalUnitName' => 'IT',
-                'emailAddress'           => 'qa@acmephp.com',
-
+                'emailAddress' => 'qa@acmephp.com',
             ],
             $csrResult
         );
@@ -72,10 +70,7 @@ class CertificateRequestSignerTest extends \PHPUnit_Framework_TestCase
         $this->assertContains('-----BEGIN CERTIFICATE REQUEST-----', $result);
         $csrResult = openssl_csr_get_subject($result, false);
         $this->assertSame(
-            [
-                'commonName' => 'acmephp.com',
-
-            ],
+            [],
             $csrResult
         );
     }
@@ -97,14 +92,12 @@ class CertificateRequestSignerTest extends \PHPUnit_Framework_TestCase
         $csrResult = openssl_csr_get_subject($result, false);
         $this->assertSame(
             [
-                'commonName'             => 'acmephp.com',
-                'countryName'            => 'FR',
-                'stateOrProvinceName'    => 'france',
-                'localityName'           => 'Paris',
-                'organizationName'       => 'acme',
+                'countryName' => 'FR',
+                'stateOrProvinceName' => 'france',
+                'localityName' => 'Paris',
+                'organizationName' => 'acme',
                 'organizationalUnitName' => 'IT',
-                'emailAddress'           => 'qa@acmephp.com',
-
+                'emailAddress' => 'qa@acmephp.com',
             ],
             $csrResult
         );

@@ -1,7 +1,7 @@
 <?php
 
 /*
- * This file is part of the ACME PHP library.
+ * This file is part of the Acme PHP project.
  *
  * (c) Titouan Galopin <galopintitouan@gmail.com>
  *
@@ -142,9 +142,6 @@ class SecureHttpClientTest extends \PHPUnit_Framework_TestCase
         $payload = @json_decode($body, true);
 
         $this->assertInternalType('array', $payload);
-        $this->assertArrayHasKey('header', $payload);
-        $this->assertArrayHasKey('alg', $payload['header']);
-        $this->assertArrayHasKey('jwk', $payload['header']);
         $this->assertArrayHasKey('protected', $payload);
         $this->assertArrayHasKey('payload', $payload);
         $this->assertArrayHasKey('signature', $payload);

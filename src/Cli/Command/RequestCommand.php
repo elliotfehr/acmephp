@@ -13,9 +13,11 @@ namespace AcmePhp\Cli\Command;
 
 use AcmePhp\Cli\ActionHandler\ActionHandler;
 use AcmePhp\Cli\Command\Helper\DistinguishedNameHelper;
+use AcmePhp\Cli\Repository\Repository;
 use AcmePhp\Cli\Repository\RepositoryInterface;
-use AcmePhp\Core\AcmeClientInterface;
+use AcmePhp\Core\AcmeClientV2Interface;
 use AcmePhp\Ssl\CertificateRequest;
+use AcmePhp\Ssl\CertificateResponse;
 use AcmePhp\Ssl\DistinguishedName;
 use AcmePhp\Ssl\ParsedCertificate;
 use Psr\Log\LoggerInterface;
@@ -35,7 +37,7 @@ class RequestCommand extends AbstractCommand
     private $repository;
 
     /**
-     * @var AcmeClientInterface
+     * @var AcmeClientV2Interface
      */
     private $client;
 
@@ -90,7 +92,7 @@ EOF
         // Certificate renewal
         if ($this->hasValidCertificate($domain, $alternativeNames)) {
             $this->debug('Certificate found, executing renewal', [
-                'domain'            => $domain,
+                'domain' => $domain,
                 'alternative_names' => $alternativeNames,
             ]);
 
@@ -98,7 +100,7 @@ EOF
         }
 
         $this->debug('No certificate found, executing first request', [
-            'domain'            => $domain,
+            'domain' => $domain,
             'alternative_names' => $alternativeNames,
         ]);
 
@@ -120,7 +122,7 @@ EOF
             return false;
         }
 
-        if ($this->repository->loadDomainDistinguishedName($domain)->getSubjectAlternativeNames() != $alternativeNames) {
+        if ($this->repository->loadDomainDistinguishedName($domain)->getSubjectAlternativeNames() !== $alternativeNames) {
             return false;
         }
 
@@ -150,17 +152,22 @@ EOF;
         $this->repository->storeDomainKeyPair($domain, $domainKeyPair);
 
         $this->debug('Domain key pair generated and stored', [
-            'domain'     => $domain,
+            'domain' => $domain,
             'public_key' => $domainKeyPair->getPublicKey()->getPEM(),
         ]);
 
         $distinguishedName = $this->getOrCreateDistinguishedName($domain, $alternativeNames);
         $this->notice('Distinguished name informations have been stored locally for this domain (they won\'t be asked on renewal).');
 
+        // Order
+        $domains = array_merge([$domain], $alternativeNames);
+        $this->notice(sprintf('Loading the order related to the domains %s ...', implode(', ', $domains)));
+        $order = $this->getRepository()->loadCertificateOrder($domains);
+
         // Request
         $this->notice(sprintf('Requesting first certificate for domain %s ...', $domain));
         $csr = new CertificateRequest($distinguishedName, $domainKeyPair);
-        $response = $this->client->requestCertificate($domain, $csr);
+        $response = $this->client->finalizeOrder($order, $csr);
         $this->debug('Certificate received', ['certificate' => $response->getCertificate()->getPEM()]);
 
         // Store
@@ -209,14 +216,14 @@ EOF;
 
         $replacements = [
             '%expiration%' => $parsedCertificate->getValidTo()->format(\DateTime::ISO8601),
-            '%private%'    => $masterPath.'/private/'.$domain.'/private.pem',
-            '%cert%'       => $masterPath.'/certs/'.$domain.'/cert.pem',
-            '%chain%'      => $masterPath.'/certs/'.$domain.'/chain.pem',
-            '%fullchain%'  => $masterPath.'/certs/'.$domain.'/fullchain.pem',
-            '%combined%'   => $masterPath.'/certs/'.$domain.'/combined.pem',
+            '%private%' => $masterPath.'/'.Repository::PATH_DOMAIN_KEY_PRIVATE,
+            '%combined%' => $masterPath.'/'.Repository::PATH_DOMAIN_CERT_COMBINED,
+            '%cert%' => $masterPath.'/'.Repository::PATH_DOMAIN_CERT_CERT,
+            '%chain%' => $masterPath.'/'.Repository::PATH_DOMAIN_CERT_CHAIN,
+            '%fullchain%' => $masterPath.'/'.Repository::PATH_DOMAIN_CERT_FULLCHAIN,
         ];
 
-        $this->info(str_replace(array_keys($replacements), array_values($replacements), $success));
+        $this->info(strtr(strtr($success, $replacements), ['{domain}' => $domain]));
     }
 
     /**
@@ -228,7 +235,7 @@ EOF;
     private function executeRenewal($domain, array $alternativeNames)
     {
         /** @var LoggerInterface $monitoringLogger */
-        $monitoringLogger = $this->getContainer()->get('monitoring_factory')->createLogger();
+        $monitoringLogger = $this->getContainer()->get('acmephp.monitoring_factory')->createLogger();
 
         try {
             // Check expiration date to avoid too much renewal
@@ -244,7 +251,7 @@ EOF;
 
                 if ($parsedCertificate->getValidTo()->format('U') - time() >= 604800) {
                     $monitoringLogger->debug('Certificate does not need renewal', [
-                        'domain'      => $domain,
+                        'domain' => $domain,
                         'valid_until' => $parsedCertificate->getValidTo()->format('Y-m-d H:i:s'),
                     ]);
 
@@ -253,11 +260,23 @@ EOF;
                         $parsedCertificate->getValidTo()->format('Y-m-d H:i:s'))
                     );
 
+                    // Post-generate actions
+                    $this->info('Running post-generate actions...');
+                    $response = new CertificateResponse(
+                        new CertificateRequest(
+                            $this->repository->loadDomainDistinguishedName($domain),
+                            $this->repository->loadDomainKeyPair($domain)
+                        ),
+                        $certificate
+                    );
+
+                    $this->actionHandler->handle($response);
+
                     return;
                 }
 
                 $monitoringLogger->debug('Certificate needs renewal', [
-                    'domain'      => $domain,
+                    'domain' => $domain,
                     'valid_until' => $parsedCertificate->getValidTo()->format('Y-m-d H:i:s'),
                 ]);
 
@@ -277,10 +296,15 @@ EOF;
             $this->info('Loading domain distinguished name...');
             $distinguishedName = $this->getOrCreateDistinguishedName($domain, $alternativeNames);
 
+            // Order
+            $domains = array_merge([$domain], $alternativeNames);
+            $this->notice(sprintf('Loading the order related to the domains %s ...', implode(', ', $domains)));
+            $order = $this->getRepository()->loadCertificateOrder($domains);
+
             // Renewal
             $this->info(sprintf('Renewing certificate for domain %s ...', $domain));
             $csr = new CertificateRequest($distinguishedName, $domainKeyPair);
-            $response = $this->client->requestCertificate($domain, $csr);
+            $response = $this->client->finalizeOrder($order, $csr);
             $this->debug('Certificate received', ['certificate' => $response->getCertificate()->getPEM()]);
 
             $this->repository->storeDomainCertificate($domain, $response->getCertificate());

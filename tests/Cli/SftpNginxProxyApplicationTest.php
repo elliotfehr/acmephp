@@ -1,7 +1,7 @@
 <?php
 
 /*
- * This file is part of the ACME PHP library.
+ * This file is part of the Acme PHP project.
  *
  * (c) Titouan Galopin <galopintitouan@gmail.com>
  *
@@ -42,11 +42,11 @@ class SftpNginxProxyApplicationTest extends AbstractApplicationTest
     public function testFullProcess()
     {
         $sftpFilesystem = new Filesystem(new SftpAdapter([
-            'host'     => 'localhost',
-            'port'     => 8022,
+            'host' => 'localhost',
+            'port' => 8022,
             'username' => 'acmephp',
             'password' => 'acmephp',
-            'root'     => '/share',
+            'root' => '/share',
         ]));
 
         // Remove any old version of the files
@@ -62,26 +62,26 @@ class SftpNginxProxyApplicationTest extends AbstractApplicationTest
         $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/nginxproxy/acmephp.com.key');
 
         // Backup
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/private/acmephp.com/private.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/private/acmephp.com/public.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/certs/acmephp.com/cert.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/certs/acmephp.com/combined.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/certs/acmephp.com/chain.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/certs/acmephp.com/fullchain.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/certs/acmephp.com/private/key.private.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/certs/acmephp.com/private/key.public.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/certs/acmephp.com/private/combined.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/certs/acmephp.com/public/cert.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/certs/acmephp.com/public/chain.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/certs/acmephp.com/public/fullchain.pem');
 
         // Backup nginxproxy
         $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/nginxproxy/acmephp.com.crt');
         $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/backup/nginxproxy/acmephp.com.key');
 
         // SFTP
-        $this->assertTrue($sftpFilesystem->has('private/_account/private.pem'));
-        $this->assertTrue($sftpFilesystem->has('private/_account/public.pem'));
-        $this->assertTrue($sftpFilesystem->has('private/acmephp.com/private.pem'));
-        $this->assertTrue($sftpFilesystem->has('private/acmephp.com/public.pem'));
-        $this->assertTrue($sftpFilesystem->has('certs/acmephp.com/fullchain.pem'));
-        $this->assertTrue($sftpFilesystem->has('certs/acmephp.com/cert.pem'));
-        $this->assertTrue($sftpFilesystem->has('certs/acmephp.com/chain.pem'));
-        $this->assertTrue($sftpFilesystem->has('certs/acmephp.com/combined.pem'));
+        $this->assertTrue($sftpFilesystem->has('account/key.private.pem'));
+        $this->assertTrue($sftpFilesystem->has('account/key.public.pem'));
+        $this->assertTrue($sftpFilesystem->has('certs/acmephp.com/private/key.private.pem'));
+        $this->assertTrue($sftpFilesystem->has('certs/acmephp.com/private/key.public.pem'));
+        $this->assertTrue($sftpFilesystem->has('certs/acmephp.com/private/combined.pem'));
+        $this->assertTrue($sftpFilesystem->has('certs/acmephp.com/public/cert.pem'));
+        $this->assertTrue($sftpFilesystem->has('certs/acmephp.com/public/chain.pem'));
+        $this->assertTrue($sftpFilesystem->has('certs/acmephp.com/public/fullchain.pem'));
         $this->assertTrue($sftpFilesystem->has('nginxproxy/acmephp.com.crt'));
         $this->assertTrue($sftpFilesystem->has('nginxproxy/acmephp.com.key'));
     }

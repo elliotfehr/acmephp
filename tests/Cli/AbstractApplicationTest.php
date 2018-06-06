@@ -1,7 +1,7 @@
 <?php
 
 /*
- * This file is part of the ACME PHP library.
+ * This file is part of the Acme PHP project.
  *
  * (c) Titouan Galopin <galopintitouan@gmail.com>
  *
@@ -56,18 +56,17 @@ abstract class AbstractApplicationTest extends AbstractFunctionnalTest
         $register = $this->application->find('register');
         $registerTester = new CommandTester($register);
         $registerTester->execute([
-            'command'     => $register->getName(),
-            'email'       => 'foo@example.com',
-            '--server'    => 'http://127.0.0.1:4000/directory',
-            '--agreement' => 'http://boulder:4000/terms/v1',
+            'command' => $register->getName(),
+            'email' => 'foo@example.com',
+            '--server' => 'https://localhost:14000/dir',
         ]);
 
         $registerDisplay = $registerTester->getDisplay();
 
         $this->assertContains('No account key pair was found, generating one', $registerDisplay);
         $this->assertContains('Account registered successfully', $registerDisplay);
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/private/_account/private.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/private/_account/public.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/account/key.private.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/account/key.public.pem');
 
         /*
          * Authorize
@@ -75,16 +74,16 @@ abstract class AbstractApplicationTest extends AbstractFunctionnalTest
         $authorize = $this->application->find('authorize');
         $authorizeTest = new CommandTester($authorize);
         $authorizeTest->execute([
-            'command'  => $authorize->getName(),
-            'domain'   => 'acmephp.com',
-            '--server' => 'http://127.0.0.1:4000/directory',
+            'command' => $authorize->getName(),
+            'domains' => ['acmephp.com'],
+            '--server' => 'https://localhost:14000/dir',
         ]);
 
         $authorizeDisplay = $authorizeTest->getDisplay();
 
-        $this->assertContains('The authorization token was successfully fetched', $authorizeDisplay);
+        $this->assertContains('The authorization tokens was successfully fetched', $authorizeDisplay);
         $this->assertContains('http://acmephp.com/.well-known/acme-challenge/', $authorizeDisplay);
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/private/acmephp.com/authorization_challenge.json');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/var/acmephp.com/authorization_challenge.json');
 
         /*
          * Check
@@ -92,7 +91,7 @@ abstract class AbstractApplicationTest extends AbstractFunctionnalTest
 
         // Find challenge and expose token
         $challenge = json_decode(
-            file_get_contents(__DIR__.'/../Cli/Fixtures/local/master/private/acmephp.com/authorization_challenge.json'),
+            file_get_contents(__DIR__.'/../Cli/Fixtures/local/master/var/acmephp.com/authorization_challenge.json'),
             true
         );
 
@@ -105,9 +104,9 @@ abstract class AbstractApplicationTest extends AbstractFunctionnalTest
             $check = $this->application->find('check');
             $checkTest = new CommandTester($check);
             $checkTest->execute([
-                'command'   => $check->getName(),
-                'domain'    => 'acmephp.com',
-                '--server'  => 'http://127.0.0.1:4000/directory',
+                'command' => $check->getName(),
+                'domains' => ['acmephp.com'],
+                '--server' => 'https://localhost:14000/dir',
                 '--no-test' => null,
             ]);
 
@@ -124,27 +123,27 @@ abstract class AbstractApplicationTest extends AbstractFunctionnalTest
         $request = $this->application->find('request');
         $requestTest = new CommandTester($request);
         $requestTest->execute([
-            'command'        => $request->getName(),
-            'domain'         => 'acmephp.com',
-            '--server'       => 'http://127.0.0.1:4000/directory',
-            '--country'      => 'FR',
-            '--province'     => 'Ile de France',
-            '--locality'     => 'Paris',
+            'command' => $request->getName(),
+            'domain' => 'acmephp.com',
+            '--server' => 'https://localhost:14000/dir',
+            '--country' => 'FR',
+            '--province' => 'Ile de France',
+            '--locality' => 'Paris',
             '--organization' => 'Acme PHP',
-            '--unit'         => 'Sales',
-            '--email'        => 'example@acmephp.github.io',
+            '--unit' => 'Sales',
+            '--email' => 'example@acmephp.github.io',
         ]);
 
         $requestDisplay = $requestTest->getDisplay();
 
         $this->assertContains('The SSL certificate was fetched successfully', $requestDisplay);
         $this->assertContains(Path::canonicalize(__DIR__.'/Fixtures/local/master'), $requestDisplay);
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/private/acmephp.com/private.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/private/acmephp.com/public.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/certs/acmephp.com/cert.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/certs/acmephp.com/combined.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/certs/acmephp.com/chain.pem');
-        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/certs/acmephp.com/fullchain.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/certs/acmephp.com/private/key.private.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/certs/acmephp.com/private/key.public.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/certs/acmephp.com/public/cert.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/certs/acmephp.com/private/combined.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/certs/acmephp.com/public/chain.pem');
+        $this->assertFileExists(__DIR__.'/../Cli/Fixtures/local/master/certs/acmephp.com/public/fullchain.pem');
     }
 
     /**
@@ -158,9 +157,9 @@ abstract class AbstractApplicationTest extends AbstractFunctionnalTest
         $command = $this->application->find('authorize');
         $commandTester = new CommandTester($command);
         $commandTester->execute([
-            'command'  => $command->getName(),
-            'domain'   => 'example.com',
-            '--server' => 'http://127.0.0.1:4000/directory',
+            'command' => $command->getName(),
+            'domains' => 'example.com',
+            '--server' => 'https://localhost:14000/dir',
         ]);
     }
 
@@ -174,9 +173,9 @@ abstract class AbstractApplicationTest extends AbstractFunctionnalTest
         $command = $this->application->find('check');
         $commandTester = new CommandTester($command);
         $commandTester->execute([
-            'command'  => $command->getName(),
-            'domain'   => 'example.com',
-            '--server' => 'http://127.0.0.1:4000/directory',
+            'command' => $command->getName(),
+            'domains' => ['example.com'],
+            '--server' => 'https://localhost:14000/dir',
         ]);
     }
 
@@ -190,15 +189,15 @@ abstract class AbstractApplicationTest extends AbstractFunctionnalTest
         $command = $this->application->find('request');
         $commandTester = new CommandTester($command);
         $commandTester->execute([
-            'command'        => $command->getName(),
-            'domain'         => 'acmephp.com',
-            '--server'       => 'http://127.0.0.1:4000/directory',
-            '--country'      => 'FR',
-            '--province'     => 'Ile de France',
-            '--locality'     => 'Paris',
+            'command' => $command->getName(),
+            'domain' => 'acmephp.com',
+            '--server' => 'https://localhost:14000/dir',
+            '--country' => 'FR',
+            '--province' => 'Ile de France',
+            '--locality' => 'Paris',
             '--organization' => 'Acme PHP',
-            '--unit'         => 'Sales',
-            '--email'        => 'example@acmephp.github.io',
+            '--unit' => 'Sales',
+            '--email' => 'example@acmephp.github.io',
         ]);
     }
 

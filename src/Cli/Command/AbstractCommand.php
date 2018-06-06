@@ -14,8 +14,9 @@ namespace AcmePhp\Cli\Command;
 use AcmePhp\Cli\ActionHandler\ActionHandler;
 use AcmePhp\Cli\Application;
 use AcmePhp\Cli\Configuration\AcmeConfiguration;
-use AcmePhp\Cli\Repository\RepositoryInterface;
+use AcmePhp\Cli\Repository\RepositoryV2Interface;
 use AcmePhp\Core\AcmeClient;
+use AcmePhp\Core\Challenge\Dns\LibDnsResolver;
 use AcmePhp\Core\Http\SecureHttpClient;
 use AcmePhp\Ssl\Signer\CertificateRequestSigner;
 use Psr\Log\LoggerInterface;
@@ -24,8 +25,10 @@ use Symfony\Component\Config\FileLocator;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\DependencyInjection\Argument\ServiceClosureArgument;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\XmlFileLoader;
+use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Filesystem\Exception\IOException;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Yaml\Yaml;
@@ -65,7 +68,7 @@ abstract class AbstractCommand extends Command implements LoggerInterface
     }
 
     /**
-     * @return RepositoryInterface
+     * @return RepositoryV2Interface
      */
     protected function getRepository()
     {
@@ -81,7 +84,7 @@ abstract class AbstractCommand extends Command implements LoggerInterface
     {
         $this->debug('Loading action handler');
 
-        return $this->getContainer()->get('action_handler');
+        return $this->getContainer()->get('acmephp.action_handler');
     }
 
     /**
@@ -116,19 +119,16 @@ abstract class AbstractCommand extends Command implements LoggerInterface
      */
     protected function getContainer()
     {
-        if ($this->container === null) {
+        if (null === $this->container) {
             $this->initializeContainer();
         }
 
         return $this->container;
     }
 
-    /**
-     * @return void
-     */
     private function initializeContainer()
     {
-        if ($this->configuration === null) {
+        if (null === $this->configuration) {
             $this->initializeConfiguration();
         }
 
@@ -152,27 +152,35 @@ abstract class AbstractCommand extends Command implements LoggerInterface
         $loader = new XmlFileLoader($this->container, new FileLocator(__DIR__.'/../Resources'));
         $loader->load('services.xml');
 
-        // Load solver
-        $solvers = [];
-        foreach ($this->container->findTaggedServiceIds('acmephp.challenge_solver') as $serviceId => $tags) {
-            foreach ($tags as $tag) {
-                if (!isset($tag['alias'])) {
-                    throw new \InvalidArgumentException(sprintf('The tagged service "%s" must define have an alias', $serviceId));
-                }
-
-                $solvers[$tag['alias']] = $serviceId;
+        foreach ($this->container->findTaggedServiceIds('acmephp.service_locator') as $locatorId => $locatorTags) {
+            if (!isset($locatorTags[0]['tag'])) {
+                throw new \InvalidArgumentException(
+                    sprintf('The tagged service "%s" must define have an alias', $serviceId)
+                );
             }
+            $locatorTags = $locatorTags[0]['tag'];
+            $factories = [];
+            foreach ($this->container->findTaggedServiceIds($locatorTags) as $serviceId => $tags) {
+                foreach ($tags as $tag) {
+                    if (!isset($tag['alias'])) {
+                        throw new \InvalidArgumentException(
+                            sprintf('The tagged service "%s" must define have an alias', $serviceId)
+                        );
+                    }
+
+                    $factories[$tag['alias']] = new ServiceClosureArgument(new Reference($serviceId));
+                }
+            }
+            $this->container->findDefinition($locatorId)->replaceArgument(0, $factories);
         }
-        $this->container->findDefinition('challenge_solver.locator')->replaceArgument(1, $solvers);
+
+        $this->container->setAlias('challenge_validator.dns.resolver', 'challenge_validator.dns.resolver.'.(LibDnsResolver::isSupported() ? 'libdns' : 'simple'));
 
         // Inject input and output
         $this->container->set('input', $this->input);
         $this->container->set('output', $this->output);
     }
 
-    /**
-     * @return void
-     */
     private function initializeConfiguration()
     {
         $configFile = $this->getApplication()->getConfigFile();

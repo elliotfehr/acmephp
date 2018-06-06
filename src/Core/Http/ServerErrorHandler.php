@@ -1,7 +1,7 @@
 <?php
 
 /*
- * This file is part of the ACME PHP library.
+ * This file is part of the Acme PHP project.
  *
  * (c) Titouan Galopin <galopintitouan@gmail.com>
  *
@@ -35,16 +35,16 @@ use Psr\Http\Message\ResponseInterface;
 class ServerErrorHandler
 {
     private static $exceptions = [
-        'badCSR'         => BadCsrServerException::class,
-        'badNonce'       => BadNonceServerException::class,
-        'connection'     => ConnectionServerException::class,
+        'badCSR' => BadCsrServerException::class,
+        'badNonce' => BadNonceServerException::class,
+        'connection' => ConnectionServerException::class,
         'serverInternal' => InternalServerException::class,
-        'invalidEmail'   => InvalidEmailServerException::class,
-        'malformed'      => MalformedServerException::class,
-        'rateLimited'    => RateLimitedServerException::class,
-        'tls'            => TlsServerException::class,
-        'unauthorized'   => UnauthorizedServerException::class,
-        'unknownHost'    => UnknownHostServerException::class,
+        'invalidEmail' => InvalidEmailServerException::class,
+        'malformed' => MalformedServerException::class,
+        'rateLimited' => RateLimitedServerException::class,
+        'tls' => TlsServerException::class,
+        'unauthorized' => UnauthorizedServerException::class,
+        'unknownHost' => UnknownHostServerException::class,
     ];
 
     /**
@@ -95,7 +95,7 @@ class ServerErrorHandler
             return $this->createDefaultExceptionForResponse($request, $response, $previous);
         }
 
-        $type = preg_replace('/^urn:acme:error:/i', '', $data['type']);
+        $type = preg_replace('/^urn:(ietf:params:)?acme:error:/i', '', $data['type']);
 
         if (!isset(self::$exceptions[$type])) {
             // Unknown type: not an ACME error response

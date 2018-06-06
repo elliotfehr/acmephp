@@ -1,7 +1,7 @@
 <?php
 
 /*
- * This file is part of the ACME PHP library.
+ * This file is part of the Acme PHP project.
  *
  * (c) Titouan Galopin <galopintitouan@gmail.com>
  *
@@ -84,7 +84,7 @@ class WaitingValidatorTest extends \PHPUnit_Framework_TestCase
         $start = time();
         $mockDecorated->isValid($dummyChallenge)->willReturn(false, false, true);
         $this->assertTrue($validator->isValid($dummyChallenge));
-        $this->assertGreaterThanOrEqual(2, time() - $start);
-        $this->assertLessThan(3, time() - $start);
+        $this->assertGreaterThanOrEqual(6, time() - $start);
+        $this->assertLessThan(9, time() - $start);
     }
 }
