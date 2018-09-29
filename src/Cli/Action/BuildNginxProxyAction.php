@@ -46,6 +46,9 @@ class BuildNginxProxyAction implements ActionInterface
         $privateKey = $response->getCertificateRequest()->getKeyPair()->getPrivateKey();
         $certificate = $response->getCertificate();
 
+        // To handle wildcard certs
+        $domain = ltrim($domain, '*.');
+
         $this->repository->save('nginxproxy/'.$domain.'.key', $privateKey->getPEM());
 
         // Issuer chain
@@ -54,7 +57,7 @@ class BuildNginxProxyAction implements ActionInterface
         }, $certificate->getIssuerChain());
 
         // Full chain
-        $fullChainPem = $certificate->getPEM().implode("\n", $issuerChain);
+        $fullChainPem = $certificate->getPEM()."\n".implode("\n", $issuerChain);
 
         $this->repository->save('nginxproxy/'.$domain.'.crt', $fullChainPem);
     }
