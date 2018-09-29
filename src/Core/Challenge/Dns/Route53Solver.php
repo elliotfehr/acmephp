@@ -15,6 +15,8 @@ use AcmePhp\Core\Challenge\MultipleChallengesSolverInterface;
 use AcmePhp\Core\Exception\Protocol\ChallengeFailedException;
 use AcmePhp\Core\Protocol\AuthorizationChallenge;
 use Aws\Route53\Route53Client;
+use Psr\Log\LoggerAwareTrait;
+use Psr\Log\NullLogger;
 use Webmozart\Assert\Assert;
 
 /**
@@ -24,6 +26,7 @@ use Webmozart\Assert\Assert;
  */
 class Route53Solver implements MultipleChallengesSolverInterface
 {
+    use LoggerAwareTrait;
     /**
      * @var DnsDataExtractor
      */
@@ -35,6 +38,11 @@ class Route53Solver implements MultipleChallengesSolverInterface
     private $client;
 
     /**
+     * @var array
+     */
+    private $cacheZones;
+
+    /**
      * @param DnsDataExtractor $extractor
      * @param Route53Client    $client
      */
@@ -44,6 +52,7 @@ class Route53Solver implements MultipleChallengesSolverInterface
     ) {
         $this->extractor = null === $extractor ? new DnsDataExtractor() : $extractor;
         $this->client = null === $client ? new Route53Client([]) : $client;
+        $this->logger = new NullLogger();
     }
 
     /**
@@ -76,26 +85,26 @@ class Route53Solver implements MultipleChallengesSolverInterface
 
             $authorizationChallengesPerRecordName = $this->groupAuthorizationChallengesPerRecordName($authorizationChallengesForDomain);
             foreach ($authorizationChallengesPerRecordName as $recordName => $authorizationChallengesForRecordName) {
-                $recordValues = array_unique(array_map([$this->extractor, 'getRecordValue'], $authorizationChallengesForRecordName));
+                $challengeValues = array_unique(array_map([$this->extractor, 'getRecordValue'], $authorizationChallengesForRecordName));
+                $recordIndex = $this->getPreviousRecordIndex($zone['Id'], $recordName);
 
-                $changesPerZone[$zone['Id']][] = [
-                    'Action' => 'UPSERT',
-                    'ResourceRecordSet' => [
-                        'Name' => $recordName,
-                        'ResourceRecords' => array_map(function ($recordValue) {
-                            return [
-                                'Value' => sprintf('"%s"', $recordValue),
-                            ];
-                        }, $recordValues),
-                        'TTL' => 5,
-                        'Type' => 'TXT',
-                    ],
-                ];
+                if (0 === count(array_diff($challengeValues, array_keys($recordIndex)))) {
+                    $this->logger->debug('Record already defined', ['recordName' => $recordName]);
+                    continue;
+                }
+
+                foreach ($challengeValues as $recordValue) {
+                    $recordIndex[$recordValue] = time();
+                }
+
+                $changesPerZone[$zone['Id']][] = $this->getSaveRecordQuery($recordName, $recordIndex);
             }
         }
 
+        $records = [];
         foreach ($changesPerZone as $zoneId => $changes) {
-            $this->changeResourceRecordSets(
+            $this->logger->info('Updating route 53 DNS', ['zone' => $zoneId]);
+            $records[$zoneId] = $this->client->changeResourceRecordSets(
                 [
                     'ChangeBatch' => [
                         'Changes' => $changes,
@@ -103,6 +112,10 @@ class Route53Solver implements MultipleChallengesSolverInterface
                     'HostedZoneId' => $zoneId,
                 ]
             );
+        }
+        foreach ($records as $zoneId => $record) {
+            $this->logger->info('Waiting for Route 53 changes', ['zone' => $zoneId]);
+            $this->client->waitUntil('ResourceRecordSetsChanged', ['Id' => $record['ChangeInfo']['Id']]);
         }
     }
 
@@ -128,42 +141,19 @@ class Route53Solver implements MultipleChallengesSolverInterface
 
             $authorizationChallengesPerRecordName = $this->groupAuthorizationChallengesPerRecordName($authorizationChallengesForDomain);
             foreach ($authorizationChallengesPerRecordName as $recordName => $authorizationChallengesForRecordName) {
-                $recordSets = $this->client->listResourceRecordSets(
-                    [
-                        'HostedZoneId' => $zone['Id'],
-                        'StartRecordName' => $recordName,
-                        'StartRecordType' => 'TXT',
-                    ]
-                );
+                $challengeValues = array_unique(array_map([$this->extractor, 'getRecordValue'], $authorizationChallengesForRecordName));
+                $recordIndex = $this->getPreviousRecordIndex($zone['Id'], $recordName);
 
-                $recordSets = array_filter(
-                    $recordSets['ResourceRecordSets'],
-                    function ($recordSet) use ($recordName) {
-                        return $recordSet['Name'] === $recordName && 'TXT' === $recordSet['Type'];
-                    }
-                );
-
-                if (!$recordSets) {
-                    return;
+                foreach ($challengeValues as $recordValue) {
+                    unset($recordIndex[$recordValue]);
                 }
-
-                if (!isset($changesPerZone[$zone['Id']])) {
-                    $changesPerZone[$zone['Id']] = [];
-                }
-                $changesPerZone[$zone['Id']] = array_merge($changesPerZone[$zone['Id']], array_map(
-                    function ($recordSet) {
-                        return [
-                            'Action' => 'DELETE',
-                            'ResourceRecordSet' => $recordSet,
-                        ];
-                    },
-                    $recordSets
-                ));
+                $changesPerZone[$zone['Id']][] = $this->getSaveRecordQuery($recordName, $recordIndex);
             }
         }
 
         foreach ($changesPerZone as $zoneId => $changes) {
-            $this->changeResourceRecordSets(
+            $this->logger->info('Updating route 53 DNS', ['zone' => $zoneId]);
+            $this->client->changeResourceRecordSets(
                 [
                     'ChangeBatch' => [
                         'Changes' => $changes,
@@ -172,6 +162,71 @@ class Route53Solver implements MultipleChallengesSolverInterface
                 ]
             );
         }
+    }
+
+    private function getPreviousRecordIndex($zoneId, $recordName)
+    {
+        $previousRecordSets = $this->client->listResourceRecordSets([
+            'HostedZoneId' => $zoneId,
+            'StartRecordName' => $recordName,
+            'StartRecordType' => 'TXT',
+        ]);
+        $recordSets = array_filter(
+            $previousRecordSets['ResourceRecordSets'],
+            function ($recordSet) use ($recordName) {
+                return $recordSet['Name'] === $recordName && 'TXT' === $recordSet['Type'];
+            }
+        );
+        $recordIndex = [];
+        foreach ($recordSets as $previousRecordSet) {
+            $previousTxt = array_map(function ($resourceRecord) {
+                return \stripslashes(trim($resourceRecord['Value'], '"'));
+            }, $previousRecordSet['ResourceRecords']);
+            // Search the special Index
+            foreach ($previousTxt as $index => $recordValue) {
+                if (null !== $previousIndex = json_decode($recordValue, true)) {
+                    $recordIndex = $previousIndex;
+                    unset($previousTxt[$index]);
+                    break;
+                }
+            }
+            // Set default value
+            foreach ($previousTxt as $recordValue) {
+                if (!isset($recordIndex[$recordValue])) {
+                    $recordIndex[$recordValue] = time();
+                }
+            }
+        }
+
+        return $recordIndex;
+    }
+
+    private function getSaveRecordQuery($recordName, array $recordIndex)
+    {
+        //remove old indexes
+        $limitTime = time() - 86400;
+        foreach ($recordIndex as $recordValue => $time) {
+            if ($time < $limitTime) {
+                unset($recordIndex[$recordValue]);
+            }
+        }
+
+        $recordValues = \array_keys($recordIndex);
+        $recordValues[] = json_encode($recordIndex);
+
+        return [
+            'Action' => 'UPSERT',
+            'ResourceRecordSet' => [
+                'Name' => $recordName,
+                'ResourceRecords' => array_map(function ($recordValue) {
+                    return [
+                        'Value' => sprintf('"%s"', addslashes($recordValue)),
+                    ];
+                }, $recordValues),
+                'TTL' => 5,
+                'Type' => 'TXT',
+            ],
+        ];
     }
 
     /**
@@ -204,21 +259,31 @@ class Route53Solver implements MultipleChallengesSolverInterface
         return $groups;
     }
 
-    private function changeResourceRecordSets(array $payload)
-    {
-        $record = $this->client->changeResourceRecordSets($payload);
-        $this->client->waitUntil('ResourceRecordSetsChanged', ['Id' => $record['ChangeInfo']['Id']]);
-    }
-
     private function getZone($domain)
     {
         $domainParts = explode('.', $domain);
-        $domains = array_map(
+        $domains = array_reverse(array_map(
             function ($index) use ($domainParts) {
                 return implode('.', array_slice($domainParts, count($domainParts) - $index));
             },
-            range(1, count($domainParts))
-        );
+            range(0, count($domainParts))
+        ));
+
+        $zones = $this->getZones();
+        foreach ($domains as $cursorDomain) {
+            if (isset($zones[$cursorDomain.'.'])) {
+                return $zones[$cursorDomain.'.'];
+            }
+        }
+
+        throw new ChallengeFailedException(sprintf('Unable to find a zone for the domain "%s"', $domain));
+    }
+
+    private function getZones()
+    {
+        if (null !== $this->cacheZones) {
+            return $this->cacheZones;
+        }
 
         $zones = [];
         $args = [];
@@ -228,13 +293,8 @@ class Route53Solver implements MultipleChallengesSolverInterface
             $args = ['Marker' => $resp['NextMarker']];
         } while ($resp['IsTruncated']);
 
-        $zones = array_column($zones, null, 'Name');
-        foreach ($domains as $domain) {
-            if (isset($zones[$domain.'.'])) {
-                return $zones[$domain.'.'];
-            }
-        }
+        $this->cacheZones = array_column($zones, null, 'Name');
 
-        throw new ChallengeFailedException(sprintf('Unable to find a zone for the domain "%s"', $domain));
+        return $this->cacheZones;
     }
 }
