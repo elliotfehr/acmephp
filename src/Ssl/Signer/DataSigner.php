@@ -32,9 +32,12 @@ class DataSigner
      */
     public function signData($data, PrivateKey $privateKey, $algorithm = OPENSSL_ALGO_SHA256)
     {
-        if (!openssl_sign($data, $signature, $privateKey->getResource(), $algorithm)) {
+        $resource = $privateKey->getResource();
+        if (!openssl_sign($data, $signature, $resource, $algorithm)) {
             throw new DataSigningException(sprintf('OpenSSL data signing failed with error: %s', openssl_error_string()));
         }
+
+        openssl_free_key($resource);
 
         return $signature;
     }

@@ -89,6 +89,7 @@ EOL;
                     'config'     => $sslConfigFile,
                 ]
             );
+            openssl_free_key($resource);
 
             if (!$csr) {
                 throw new CSRSigningException(
